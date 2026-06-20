@@ -1,0 +1,20 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPath": "/home/xiamu/esp/esp-idf",
+  "idf.pythonInstallPath": "/home/xiamu/.espressif/python_env/idf5.5_py3.12_env/bin/python3",
+  "idf.openOcdConfigs": [
+    "board/esp32p4-builtin.cfg"
+  ],
+  "idf.port": "/dev/ttyACM0",
+  "idf.toolsPath": "/home/xiamu/.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32p4"
+  },
+  "clangd.path": "/home/xiamu/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=/home/xiamu/git/project/face_identify_V1.0/software_engineering/firmware/build"
+  ],
+  "idf.flashType": "UART"
+}

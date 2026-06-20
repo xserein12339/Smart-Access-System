@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "event_bus/mw_event_bus.c"
+        "buffer_pool/buffer_pool_manager.c"
+    INCLUDE_DIRS
+        "event_bus/include"
+        "buffer_pool/include"
+    REQUIRES
+        osal
+        pal
+        dal
+    )

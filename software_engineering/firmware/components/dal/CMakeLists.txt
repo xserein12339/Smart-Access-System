@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS
+        "common/dal_registry.c"
+        "dal_relay/dal_relay.c"
+        "dal_display/dal_display.c"
+        "dal_camera/dal_camera.c"
+        "dal_touch/dal_touch.c"
+        "dal_audio/dal_audio.c"
+        "dal_network/dal_network.c"
+        "dal_pir/dal_pir.c"
+    INCLUDE_DIRS
+        "common/include"
+        "dal_relay/include"
+        "dal_display/include"
+        "dal_camera/include"
+        "dal_touch/include"
+        "dal_audio/include"
+        "dal_network/include"
+        "dal_pir/include"
+    REQUIRES
+        osal
+        )

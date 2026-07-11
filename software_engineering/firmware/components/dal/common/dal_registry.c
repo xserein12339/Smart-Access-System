@@ -6,22 +6,23 @@
  * @version 1.0
  */
 #include "dal_registry.h"
-#include "osal_mutex.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
-/** 注册表互斥锁等待超时（ms）；OSAL lock 经 pdMS_TO_TICKS 转换，
+/** 注册表互斥锁等待超时（ms）；pdMS_TO_TICKS 转换，
  *  传 portMAX_DELAY 会溢出，故用有限超时 */
 #define DAL_REGISTRY_LOCK_TIMEOUT_MS 1000u
 
 /** 各注册表共享一把懒创建的 mutex —— 简化模型：注册表数量有限且
  *  get/register 不频繁，单把全局锁足够，避免每个 registry 各持一把。 */
-static osal_mutex_t s_mutex = NULL;
-static bool         s_mutex_created = false;
+static SemaphoreHandle_t s_mutex = NULL;
+static bool              s_mutex_created = false;
 
 static dal_err_t registry_ensure_mutex(void)
 {
     if (!s_mutex_created) {
-        s_mutex = osal_mutex_create();
+        s_mutex = xSemaphoreCreateMutex();
         if (s_mutex == NULL) {
             return DAL_ERR_NO_MEM;
         }
@@ -59,18 +60,18 @@ dal_err_t dal_registry_register(dal_registry_t *reg,
         return ret;
     }
 
-    if (!osal_mutex_lock(s_mutex, DAL_REGISTRY_LOCK_TIMEOUT_MS)) {
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(DAL_REGISTRY_LOCK_TIMEOUT_MS)) != pdTRUE) {
         return DAL_ERR_BUSY;
     }
 
     if (reg->count >= reg->max) {
-        osal_mutex_unlock(s_mutex);
+        xSemaphoreGive(s_mutex);
         return DAL_ERR_NO_MEM;
     }
 
     for (uint8_t i = 0; i < reg->count; i++) {
         if (strcmp(reg->entries[i].name, name) == 0) {
-            osal_mutex_unlock(s_mutex);
+            xSemaphoreGive(s_mutex);
             return DAL_ERR_STATE;   /* 名称冲突 */
         }
     }
@@ -80,7 +81,7 @@ dal_err_t dal_registry_register(dal_registry_t *reg,
     reg->entries[reg->count].ctx  = ctx;
     reg->count++;
 
-    osal_mutex_unlock(s_mutex);
+    xSemaphoreGive(s_mutex);
     return DAL_OK;
 }
 
@@ -101,7 +102,7 @@ dal_err_t dal_registry_get(dal_registry_t *reg,
         return DAL_ERR_NOT_FOUND;
     }
 
-    if (!osal_mutex_lock(s_mutex, DAL_REGISTRY_LOCK_TIMEOUT_MS)) {
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(DAL_REGISTRY_LOCK_TIMEOUT_MS)) != pdTRUE) {
         return DAL_ERR_BUSY;
     }
 
@@ -109,11 +110,11 @@ dal_err_t dal_registry_get(dal_registry_t *reg,
         if (strcmp(reg->entries[i].name, name) == 0) {
             *ops = reg->entries[i].ops;
             *ctx = reg->entries[i].ctx;
-            osal_mutex_unlock(s_mutex);
+            xSemaphoreGive(s_mutex);
             return DAL_OK;
         }
     }
 
-    osal_mutex_unlock(s_mutex);
+    xSemaphoreGive(s_mutex);
     return DAL_ERR_NOT_FOUND;
 }

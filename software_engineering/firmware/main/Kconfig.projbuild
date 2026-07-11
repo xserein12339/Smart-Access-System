@@ -1,0 +1,143 @@
+# Face Access Service 配置菜单
+# 凭证（broker/user/pass/device_id）优先读 NVS（db_config 键 mqtt.broker/
+# mqtt.user/mqtt.pass/dev.device_id），NVS 未设置时回退到此处 Kconfig 默认值。
+# 同一固件镜像可烧到多台设备，逐台用 console 命令或 prov 主题写入 NVS 区分。
+menu "Face Access"
+
+config FACE_DEVICE_ID
+    string "Device ID (compile-time fallback)"
+    default "FACE-0000"
+    help
+        设备唯一标识。运行期优先读 NVS 键 dev.device_id，未设置时用此值。
+
+config FACE_MQTT_BROKER_URI
+    string "MQTT broker URI"
+    default "mqtt://<SERVER_IP>:1883"
+    help
+        broker 地址。云服务器自建 EMQX：mqtt://<服务器IP>:1883（明文）
+        或 mqtts://<服务器IP>:8883（TLS，生产推荐）。部署后填实际 IP。
+
+config FACE_MQTT_USERNAME
+    string "MQTT username"
+    default ""
+    help
+        broker 账号。运行期可被 NVS 键 mqtt.user 覆盖。
+
+config FACE_MQTT_PASSWORD
+    string "MQTT password"
+    default ""
+    help
+        broker 密码。运行期可被 NVS 键 mqtt.pass 覆盖。
+
+config FACE_MQTT_CA_CERT_PEM
+    string "Custom CA PEM file (empty = use mbedTLS cert bundle)"
+    default ""
+    help
+        自定义 CA 证书（EMBED_TXTFILES 文件名）。留空则用 mbedTLS 内置证书 bundle
+        （覆盖 Let's Encrypt 等公共 CA，适用于 EMQX Cloud Serverless）。
+
+config FACE_LOCK_PULSE_MS
+    int "Door-lock unlock pulse (ms)"
+    default 3000
+    range 500 4000
+    help
+        远程开门时继电器吸合时长。须 < 看门狗超时(5s) 以免触发 WDT。
+
+config FACE_HB_INTERVAL_S
+    int "Heartbeat interval (s)"
+    default 30
+    range 5 3600
+
+config FACE_MQTT_TASK_STACK
+    int "svc_mqtt worker task stack"
+    default 6144
+
+config FACE_MQTT_TASK_PRIO
+    int "svc_mqtt worker task priority"
+    default 2
+
+config FACE_PERM_TASK_STACK
+    int "svc_perm_manager worker task stack"
+    default 16384
+
+config FACE_PERM_TASK_PRIO
+    int "svc_perm_manager worker task priority"
+    default 3
+
+config FACE_CMD_DEDUP_SIZE
+    int "Downlink msg_id dedup ring size"
+    default 8
+
+config FACE_HB_TIMEOUT_S
+    int "Heartbeat timeout threshold (s)"
+    default 10
+    range 3 120
+    help
+        svc_wdt 判定任务心跳超时的阈值。超时发 SERVICE_EVT_FAULT。
+
+config FACE_RECOG_THRESH
+    int "Face recognition confidence threshold (x1000)"
+    default 600
+    range 0 1000
+    help
+        人脸识别相似度阈值（0~1000 对应 0.0~1.0）。低于阈值视为陌生人。
+
+config FACE_CAM_LEAVE_TIMEOUT_S
+    int "Camera leave-confirm timeout (s)"
+    default 8
+    range 3 60
+    help
+        PIR 下降沿后等待人体离开的确认时长，超时则停止采集。
+
+config FACE_CAM_FRAME_DIV
+    int "Camera frame dispatch divider (1=every frame)"
+    default 2
+    range 1 8
+    help
+        采集分发抽稀：每 N 帧分发 1 帧给消费者。全速 memcpy 1.92MB/帧会占满
+        单核饿死 IDLE 触发 task watchdog，抽稀到 ~15-18fps 留出 CPU 给 IDLE。
+
+config FACE_CAM_TASK_STACK
+    int "svc_camera worker task stack"
+    default 8192
+
+config FACE_CAM_TASK_PRIO
+    int "svc_camera worker task priority"
+    default 5
+
+config FACE_TOUCH_TASK_STACK
+    int "svc_touch worker task stack"
+    default 4096
+
+config FACE_TOUCH_TASK_PRIO
+    int "svc_touch worker task priority"
+    default 4
+
+config FACE_WDT_TASK_STACK
+    int "svc_wdt worker task stack"
+    default 4096
+
+config FACE_WDT_TASK_PRIO
+    int "svc_wdt worker task priority"
+    default 6
+
+config FACE_FACE_TASK_STACK
+    int "svc_face_* worker task stack"
+    default 8192
+
+config FACE_FACE_TASK_PRIO
+    int "svc_face_* worker task priority"
+    default 3
+    help
+        AI 管线核心任务。低于 UI(4)/camera(5)（让出给显示与采集），
+        高于 perm(3 同级时间片)。mqtt/ota 已迁核心 1，不与 detect 抢核。
+
+config FACE_UI_TASK_STACK
+    int "svc_ui lvgl worker task stack"
+    default 12288
+
+config FACE_UI_TASK_PRIO
+    int "svc_ui lvgl worker task priority"
+    default 4
+
+endmenu

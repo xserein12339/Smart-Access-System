@@ -1,10 +1,45 @@
-idf_component_register(SRCS "main.c"
-
-                    INCLUDE_DIRS "."
-
-                    REQUIRES dal
-                              osal
-                              pal
-                              bsp
-                              middleware
-                              lvgl__lvgl)
+idf_component_register(
+    SRCS
+        "main.c"
+        "service/svc_camera/svc_camera.c"
+        "service/svc_face_detect/svc_face_detect.c"
+        "service/svc_face_feature/svc_face_feature.c"
+        # "service/svc_face_identify/svc_face_identify.c"  # 暂禁用
+        "service/svc_log/svc_log.c"
+        "service/svc_mqtt/svc_mqtt.c"
+        "service/svc_perm_manager/svc_perm_manager.c"
+        "service/svc_ota/svc_ota.c"
+        "service/svc_touch/svc_touch.c"
+        "service/svc_ui/svc_ui.c"
+        "service/svc_wdt/svc_wdt.c"
+    INCLUDE_DIRS
+        "."
+        "service/svc_camera/include"
+        "service/svc_face_detect/include"
+        "service/svc_face_feature/include"
+        # "service/svc_face_identify/include"  # 暂禁用
+        "service/svc_log/include"
+        "service/svc_mqtt/include"
+        "service/svc_perm_manager/include"
+        "service/svc_ota/include"
+        "service/svc_touch/include"
+        "service/svc_ui/include"
+        "service/svc_wdt/include"
+    REQUIRES
+        dal
+        bsp
+        middleware
+        mqtt
+        json
+        lvgl
+        freertos
+        nvs_flash
+        esp_event
+        esp_netif
+        esp-tls
+        mbedtls
+        app_update
+        esp_http_client
+        esp_psram
+        esp-dl
+)

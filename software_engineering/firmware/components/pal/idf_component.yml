@@ -1,9 +1,0 @@
-## IDF Component Manager Manifest File
-## PAL 摄像头模块（pal_cam）依赖 esp_video 托管组件（V4L2 框架，含 sensor 自动识别 + CSI + ISP）
-dependencies:
-  idf:
-    version: ">=5.4"
-  espressif/esp_video:
-    version: "^2.1.0"
-    rules:
-      - if: "target == esp32p4"

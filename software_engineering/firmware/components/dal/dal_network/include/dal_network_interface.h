@@ -76,6 +76,8 @@ typedef struct {
 
     /** @brief 反初始化 */
     dal_err_t (*deinit)(void *ctx);
+
+    void *ctx;              /**< BSP 私有上下文，由 create() 注入 */
 } dal_network_ops_t;
 
 #ifdef __cplusplus

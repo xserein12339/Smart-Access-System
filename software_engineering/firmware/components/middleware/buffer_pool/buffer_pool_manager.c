@@ -62,14 +62,14 @@ int buffer_pool_init(buffer_pool_t *pool,
         free_stack[capacity - 1u - i] = i;
     }
 
-    pool->lock = osal_mutex_create();
+    pool->lock = xSemaphoreCreateMutex();
     if (pool->lock == NULL) {
         return BP_ERR_NO_MEM;
     }
     /* 计数信号量初值 = capacity，反映空闲块数 */
-    pool->freeSem = osal_sem_create_counting(capacity, capacity);
+    pool->freeSem = xSemaphoreCreateCounting(capacity, capacity);
     if (pool->freeSem == NULL) {
-        osal_mutex_delete(pool->lock);
+        vSemaphoreDelete(pool->lock);
         pool->lock = NULL;
         return BP_ERR_NO_MEM;
     }
@@ -86,8 +86,8 @@ int buffer_pool_deinit(buffer_pool_t *pool)
     if (!pool->inited) {
         return BP_ERR_STATE;
     }
-    osal_sem_delete(pool->freeSem);
-    osal_mutex_delete(pool->lock);
+    vSemaphoreDelete(pool->freeSem);
+    vSemaphoreDelete(pool->lock);
     pool->freeSem = NULL;
     pool->lock    = NULL;
     pool->inited  = false;
@@ -102,22 +102,22 @@ buffer_pool_buf_t *buffer_pool_alloc(buffer_pool_t *pool, uint32_t timeout_ms)
     }
 
     /* 先等空闲块名额（可阻塞），再进临界区取索引，避免持锁等待 */
-    if (!osal_sem_take(pool->freeSem, timeout_ms)) {
+    if (xSemaphoreTake(pool->freeSem, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
         return NULL;
     }
 
     buffer_pool_buf_t *buf = NULL;
-    osal_mutex_lock(pool->lock, BP_WAIT_FOREVER);
+    xSemaphoreTake(pool->lock, pdMS_TO_TICKS(BP_WAIT_FOREVER));
     if (pool->freeTop > 0) {
         uint16_t idx = pool->freeStack[--pool->freeTop];
         buf = &pool->slots[idx];
         buf->ref = 1;
     }
-    osal_mutex_unlock(pool->lock);
+    xSemaphoreGive(pool->lock);
 
     if (buf == NULL) {
         /* 信号量与空闲栈计数不一致的极端情况，归还名额避免泄漏 */
-        osal_sem_give(pool->freeSem);
+        xSemaphoreGive(pool->freeSem);
     }
     return buf;
 }
@@ -128,14 +128,14 @@ uint32_t buffer_pool_ref(buffer_pool_buf_t *buf)
         return 0;
     }
     uint32_t newRef;
-    osal_mutex_lock(buf->pool->lock, BP_WAIT_FOREVER);
+    xSemaphoreTake(buf->pool->lock, pdMS_TO_TICKS(BP_WAIT_FOREVER));
     if (buf->ref == 0) {
         buf->ref = 1;
     } else {
         buf->ref++;
     }
     newRef = buf->ref;
-    osal_mutex_unlock(buf->pool->lock);
+    xSemaphoreGive(buf->pool->lock);
     return newRef;
 }
 
@@ -148,10 +148,10 @@ uint32_t buffer_pool_unref(buffer_pool_buf_t *buf)
     buffer_pool_t *pool = buf->pool;
     uint32_t newRef;
 
-    osal_mutex_lock(pool->lock, BP_WAIT_FOREVER);
+    xSemaphoreTake(pool->lock, pdMS_TO_TICKS(BP_WAIT_FOREVER));
     if (buf->ref == 0) {
         /* 重复释放，维持计数自洽，不回收 */
-        osal_mutex_unlock(pool->lock);
+        xSemaphoreGive(pool->lock);
         return 0;
     }
     buf->ref--;
@@ -162,10 +162,10 @@ uint32_t buffer_pool_unref(buffer_pool_buf_t *buf)
             pool->freeStack[pool->freeTop++] = buf->index;
         }
     }
-    osal_mutex_unlock(pool->lock);
+    xSemaphoreGive(pool->lock);
 
     if (newRef == 0) {
-        osal_sem_give(pool->freeSem);
+        xSemaphoreGive(pool->freeSem);
     }
     return newRef;
 }

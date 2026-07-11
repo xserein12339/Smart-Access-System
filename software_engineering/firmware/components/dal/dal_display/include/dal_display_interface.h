@@ -71,12 +71,22 @@ typedef struct {
     dal_err_t (*set_backlight)(void *ctx, uint8_t percent);
 
     /**
-     * @brief 获取显示帧缓冲指针（供直接绘制，可选）
-     * @param[in]  ctx 驱动上下文
-     * @param[out] fb  返回帧缓冲起始地址
-     * @return DAL_OK 成功，DAL_ERR_UNSUPPORTED 该后端不提供直接 FB 访问
+     * @brief 按索引获取显示帧缓冲指针（双缓冲：0/1）
+     * @param[in]  ctx   驱动上下文
+     * @param[in]  index fb 索引（0 或 1）
+     * @param[out] fb    返回该帧缓冲起始地址
+     * @return DAL_OK 成功，DAL_ERR_INVALID 索引越界，DAL_ERR_UNSUPPORTED 不提供 FB 访问
      */
-    dal_err_t (*get_fb)(void *ctx, void **fb);
+    dal_err_t (*get_fb)(void *ctx, uint8_t index, void **fb);
+
+    /**
+     * @brief 反初始化
+     * @param[in] ctx 驱动上下文（BSP 私有）
+     * @return DAL_OK 成功，DAL_ERR_HW 底层错误
+     */
+    dal_err_t (*deinit)(void *ctx);
+
+    void *ctx;              /**< BSP 私有上下文，由 create() 注入 */
 } dal_display_ops_t;
 
 #ifdef __cplusplus

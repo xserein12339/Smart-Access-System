@@ -1,0 +1,27 @@
+# 云服务器部署：EMQX 为裸装系统服务（emqx.service），后端/前端跑容器
+# 后端用 host 网络模式，容器内 127.0.0.1:1883 即裸装 EMQX
+services:
+  backend:
+    build: ./backend
+    container_name: face_access_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      # 连同机裸装 EMQX（host 网络下 127.0.0.1 即宿主机）
+      MQTT_BROKER: "127.0.0.1"
+      MQTT_PORT: "1883"
+      MQTT_USE_TLS: "false"
+    volumes:
+      - ./backend/data:/app/data
+    # host 网络：容器直接用宿主机网络栈，127.0.0.1:1883 = 裸装 EMQX
+    network_mode: host
+
+  frontend:
+    build: ./frontend
+    container_name: face_access_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # host 网络：nginx 直接监听宿主机 8080，反代 127.0.0.1:8000（后端 host 网络）
+    network_mode: host

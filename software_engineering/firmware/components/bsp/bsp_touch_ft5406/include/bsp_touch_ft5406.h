@@ -1,40 +1,39 @@
 /**
  * @file    bsp_touch_ft5406.h
- * @brief   FT5406 触摸屏 BSP - 公共接口
+ * @brief   FT5406 触摸屏 BSP — create + ctx 绑定入口
  *
- * @note    此文件仅声明本板触摸子系统的初始化入口。
- *          - 不包含引脚定义、I2C 地址、寄存器细节
- *          - 不包含 dal_touch_ops_t 或硬件上下文结构体
- *          - Service 层不应包含此文件
+ * @details 仅负责创建 ops + ctx 绑定并返回，不调用 DAL 注册 API，
+ *          不驱动硬件。注册由板级组装器（board_v1_init）通过
+ *          dal_touch_register() 完成；硬件初始化（I2C 设备挂载 + 触摸
+ *          控制器寄存器配置）由上层通过 ops->init() 按需触发。I2C 地址、
+ *          引脚细节仅在本 BSP .c 内可见，Service 层完全盲化。
  *
- * @author  xLumina
- * @version 1.0
+ *          本板单实例（main_touch），ops->ctx 编译期注入。
+ *
+ * @author  xiamu
+ * @version 1.1
  */
 #ifndef BSP_TOUCH_FT5406_H
 #define BSP_TOUCH_FT5406_H
 
 #include "dal_err.h"
+#include "dal_touch_interface.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief 初始化 FT5406 触摸屏并自注册到 DAL
+ * @brief 创建 FT5406 触摸 ops（ctx 编译期已注入）
  *
- * @details 完成：
- *          1. 从 board_v1 获取共享 I2C 总线，挂载 FT5406 设备
- *          2. 写初始化寄存器序列（DEVICE_MODE / 阈值 / 活跃周期）
- *          3. 以名称 "main_touch" 自注册到 DAL touch 模块
+ * @return 非 NULL：指向静态 ops（ops->ctx 已注入对应静态 ctx）
  *
- * @return DAL_OK 成功
- * @retval DAL_ERR_HW     底层硬件错误
- * @retval DAL_ERR_STATE  共享 I2C 未就绪 / DAL 注册冲突
- *
- * @note 依赖共享 I2C 总线已由 board_v1 初始化。轮询模型，无中断引脚。
- *       Service 通过 dal_touch_get("main_touch", ...) 获取 ops，按固定间隔 read()。
+ * @note 仅做 struct 字段初始化（memset ctx），零硬件副作用。硬件初始化
+ *       （共享 I2C 总线挂载 FT5406 设备 + 写寄存器序列）由上层调
+ *       ops->init(ctx, cfg) 触发。
+ *       注册由板级组装器调用 dal_touch_register("main_touch", ops, ops->ctx) 完成。
  */
-dal_err_t bsp_touch_ft5406_init(void);
+dal_touch_ops_t *bsp_touch_ft5406_create(void);
 
 #ifdef __cplusplus
 }

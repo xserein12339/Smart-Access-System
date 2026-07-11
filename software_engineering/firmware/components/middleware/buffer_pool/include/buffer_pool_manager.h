@@ -13,7 +13,6 @@
  *    face 消费:   buffer_pool_ref(buf);  // ref=3 ... 处理 ... unref
  *    camera:      buffer_pool_unref(buf); // ref=0 -> 回收
  *
- *  参考开发手册 1.6.3 数据流图（Empty/Full 信号量机制）。
  *
  * @author  xLumina
  * @version 1.0
@@ -23,8 +22,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "osal_mutex.h"
-#include "osal_semaphore.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,7 +39,7 @@ extern "C" {
 
 /**
  * @brief 永久等待近似值（ms）。
- * @note osal_sem_take/mutex_lock 内部用 pdMS_TO_TICKS，传 portMAX_DELAY
+ * @note xSemaphoreTake 用 pdMS_TO_TICKS，传 portMAX_DELAY
  *       (0xFFFFFFFF) 会溢出为小值，故用 1 小时作永久等待近似。
  */
 #define BP_WAIT_FOREVER  (3600u * 1000u)
@@ -66,8 +65,8 @@ struct buffer_pool {
     uint16_t *freeStack;
     volatile uint16_t freeTop;
     volatile bool inited;
-    osal_mutex_t lock;
-    osal_sem_t   freeSem;
+    SemaphoreHandle_t lock;
+    SemaphoreHandle_t freeSem;
 };
 
 /**

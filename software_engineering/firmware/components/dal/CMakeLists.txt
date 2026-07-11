@@ -18,5 +18,5 @@ idf_component_register(
         "dal_network/include"
         "dal_pir/include"
     REQUIRES
-        osal
+        freertos
         )

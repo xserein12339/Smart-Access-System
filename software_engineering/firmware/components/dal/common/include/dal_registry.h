@@ -6,8 +6,8 @@
  *          抽出此通用注册表避免重复实现。每个 dal_xxx.c 持有一个静态
  *          dal_registry_t 实例 + 静态 entry 数组。
  *
- *          线程安全：内部用 osal_mutex 保护（懒创建，依赖 ESP-IDF 启动模型
- *          下 app_main 单线程顺序调用各 bsp_xxx_init，register 不并发；
+ *          线程安全：内部用 FreeRTOS 互斥锁保护（懒创建，依赖 ESP-IDF 启动模型
+ *          下 app_main 单线程顺序调用各 bsp_xxx_create/register，register 不并发；
  *          get 可能在多任务并发，此时 mutex 已就绪）。
  *
  * @author  xLumina

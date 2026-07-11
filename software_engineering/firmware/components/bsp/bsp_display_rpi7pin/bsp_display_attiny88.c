@@ -3,18 +3,30 @@
  * @brief   ATTINY88 背光/电源管理 MCU 子驱动实现
  *
  * @details 实现 ATTINY88 的电源上电序列、复位释放、背光控制。
- *          所有 PAL I2C 返回码经 dal_err_from_pal 翻译为 dal_err_t。
+ *          使用 ESP-IDF driver/i2c_master.h 原生 API（i2c_master_bus_add_device
+ *          / i2c_master_transmit / i2c_master_transmit_receive），延时用
+ *          FreeRTOS vTaskDelay。所有 esp_err_t 在本边界翻译为 dal_err_t。
  *
  * @author  xLumina
- * @version 1.0
+ * @version 2.0
  */
 #include "bsp_display_attiny88.h"
-#include "dal_pal_err.h"
-#include "bsp_config.h"
-#include "pal_log.h"
-#include "osal_task.h"
+#include "board_v1_config.h"
+#include "dal_esp_err.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-/* ---- 内部：单字节寄存器写（reg + val 两字节 I2C 写）---- */
+/** I2C 传输超时（ms），-1 = 永久等待 */
+#define ATTINY88_I2C_TIMEOUT_MS   100
+
+static const char *TAG = "ATTINY88";
+
+/* ================================================================
+ *  内部：寄存器读写（原生 i2c_master）
+ * ================================================================ */
+
+/** @brief 单字节寄存器写（reg + val 两字节 I2C 写） */
 static dal_err_t attiny88_write_reg(bsp_attiny88_ctx_t *ctx,
                                     uint8_t reg, uint8_t val)
 {
@@ -22,20 +34,27 @@ static dal_err_t attiny88_write_reg(bsp_attiny88_ctx_t *ctx,
         return DAL_ERR_INVALID;
     }
     uint8_t buf[2] = { reg, val };
-    return dal_err_from_pal(pal_i2c_write(ctx->dev, buf, sizeof(buf)));
+    return dal_err_from_esp(i2c_master_transmit(ctx->dev, buf, sizeof(buf),
+                                                ATTINY88_I2C_TIMEOUT_MS));
 }
 
-/* ---- 内部：单字节寄存器读 ---- */
+/** @brief 单字节寄存器读（先发 reg 再收 1 字节） */
 static dal_err_t attiny88_read_reg(bsp_attiny88_ctx_t *ctx,
                                    uint8_t reg, uint8_t *val)
 {
     if (ctx == NULL || ctx->dev == NULL || val == NULL) {
         return DAL_ERR_INVALID;
     }
-    return dal_err_from_pal(pal_i2c_read_reg(ctx->dev, reg, val, 1));
+    return dal_err_from_esp(i2c_master_transmit_receive(ctx->dev, &reg, 1,
+                                                       val, 1,
+                                                       ATTINY88_I2C_TIMEOUT_MS));
 }
 
-dal_err_t bsp_attiny88_init(bsp_attiny88_ctx_t *ctx, pal_i2c_bus_handle_t bus)
+/* ================================================================
+ *  生命周期
+ * ================================================================ */
+
+dal_err_t bsp_attiny88_init(bsp_attiny88_ctx_t *ctx, i2c_master_bus_handle_t bus)
 {
     if (ctx == NULL || bus == NULL) {
         return DAL_ERR_INVALID;
@@ -43,24 +62,25 @@ dal_err_t bsp_attiny88_init(bsp_attiny88_ctx_t *ctx, pal_i2c_bus_handle_t bus)
 
     ctx->i2c_addr = BOARD_DISPLAY_ATTINY88_I2C_ADDR;
     ctx->inited   = false;
+    ctx->dev      = NULL;
 
-    pal_i2c_dev_config_t dev_cfg = {
-        .device_address    = ctx->i2c_addr,
-        .scl_speed_hz      = BOARD_I2C_FREQ_HZ,
-        .disable_ack_check = false,
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = ctx->i2c_addr,
+        .scl_speed_hz    = BOARD_I2C_FREQ_HZ,
     };
-    int ret = pal_i2c_dev_attach(&ctx->dev, bus, &dev_cfg);
-    if (ret != 0) {
-        return dal_err_from_pal(ret);
+    esp_err_t ret = i2c_master_bus_add_device(bus, &dev_cfg, &ctx->dev);
+    if (ret != ESP_OK) {
+        return dal_err_from_esp(ret);
     }
 
     /* 读固件 ID 校验（失败仅告警，不阻断——某些板可能未烧 v2 固件） */
     uint8_t id = 0;
     if (attiny88_read_reg(ctx, ATTINY88_REG_ID, &id) == DAL_OK) {
-        PAL_LOGI("ATTINY88", "firmware id: 0x%02X%s",
+        ESP_LOGI(TAG, "firmware id: 0x%02X%s",
                  id, (id == ATTINY88_FW_ID_V2) ? " (v2)" : "");
     } else {
-        PAL_LOGW("ATTINY88", "read id failed, continue");
+        ESP_LOGW(TAG, "read id failed, continue");
     }
 
     /* 初始状态：复位全部保持、电源关闭、背光关闭 */
@@ -83,7 +103,7 @@ dal_err_t bsp_attiny88_deinit(bsp_attiny88_ctx_t *ctx)
             attiny88_write_reg(ctx, ATTINY88_REG_PORTC, 0x00);
             attiny88_write_reg(ctx, ATTINY88_REG_PORTB, 0x00);
         }
-        pal_i2c_dev_detach(ctx->dev);
+        i2c_master_bus_rm_device(ctx->dev);
         ctx->dev = NULL;
     }
     ctx->inited = false;
@@ -106,9 +126,9 @@ dal_err_t bsp_attiny88_power_on(bsp_attiny88_ctx_t *ctx)
     }
 
     /* 2. 等待电源稳定 */
-    osal_task_delay_ms(BOARD_DISPLAY_POWER_TO_BACKLIGHT_MS);
+    vTaskDelay(pdMS_TO_TICKS(BOARD_DISPLAY_POWER_TO_BACKLIGHT_MS));
 
-    PAL_LOGI("ATTINY88", "main power on (bridge reset held)");
+    ESP_LOGI(TAG, "main power on (bridge reset held)");
     return DAL_OK;
 }
 
@@ -129,8 +149,8 @@ dal_err_t bsp_attiny88_release_reset(bsp_attiny88_ctx_t *ctx)
     }
 
     /* 复位释放后等待桥就绪 */
-    osal_task_delay_ms(BOARD_DISPLAY_POWER_TO_BACKLIGHT_MS);
-    PAL_LOGI("ATTINY88", "bridge/lcd/touch reset released");
+    vTaskDelay(pdMS_TO_TICKS(BOARD_DISPLAY_POWER_TO_BACKLIGHT_MS));
+    ESP_LOGI(TAG, "bridge/lcd/touch reset released");
     return DAL_OK;
 }
 

@@ -6,13 +6,13 @@
  *          - Service 层、Mock 测试、BSP 适配层均应仅包含此文件。
  *          - 严禁包含任何平台头文件（如 esp_video、pal_cam.h）或
  *            DAL 管理头（dal_camera.h）。
- *          - 采用回调式帧推送模型：start_stream 注册帧回调，BSP 内部
- *            采集任务循环取帧并经回调投递给 Service；Service 处理完
- *            一帧后调 return_frame 归还缓冲。
+ *          - 采用主动 capture 式：BSP 仅提供同步 capture_frame() 取帧原语，
+ *            不创建采集任务；采集任务由 service/main 层运行，循环调
+ *            capture_frame 取帧、return_frame 归还。BSP/DAL 不维护 OS 任务。
  *          - 所有硬件上下文封装在不透明指针 void *ctx 中。
  *
- * @author  xLumina
- * @version 1.0
+ * @author  xiamu
+ * @version 1.1
  */
 #ifndef DAL_CAMERA_INTERFACE_H
 #define DAL_CAMERA_INTERFACE_H
@@ -54,17 +54,6 @@ typedef struct {
     void             *frame_handle; /**< BSP 内部帧句柄（return_frame 时回传） */
 } dal_camera_frame_t;
 
-/**
- * @brief 帧就绪回调（BSP 采集任务调用，运行在 BSP 采集任务上下文）
- *
- * @param[in] user_data start_stream 注册时传入的用户数据
- * @param[in] frame     帧描述指针（仅在本回调内有效，处理完须 return_frame）
- *
- * @note 回调内应尽快处理或拷贝数据，避免长时间持有帧缓冲阻塞采集。
- *       禁止在回调内阻塞或调用 return_frame 以外的耗时 DAL API。
- */
-typedef void (*dal_camera_frame_cb_t)(void *user_data, const dal_camera_frame_t *frame);
-
 /** 摄像头操作契约 */
 typedef struct {
     /**
@@ -76,22 +65,21 @@ typedef struct {
     dal_err_t (*init)(void *ctx, const dal_camera_config_t *cfg);
 
     /**
-     * @brief 启动帧流推送
-     * @param[in] ctx       驱动上下文
-     * @param[in] cb        帧就绪回调
-     * @param[in] user_data 传给回调的用户数据
-     * @return DAL_OK 成功，DAL_ERR_STATE 已在推流或未初始化
+     * @brief 同步取一帧图像（阻塞）
+     *
+     * @param[in]  ctx        驱动上下文
+     * @param[in]  timeout_ms 超时毫秒数，-1 永久阻塞；超时返回 DAL_ERR_TIMEOUT
+     * @param[out] frame      帧描述（buf/len/width/height/format/timestamp/frame_handle）
+     * @return DAL_OK 成功，DAL_ERR_TIMEOUT 超时无帧，其他见 dal_err_t
+     *
+     * @note 本函数阻塞至有帧就绪或超时。BSP 不创建任务，由调用方在自有
+     *       任务上下文循环调用。frame->buf 仅在 return_frame 调用前有效。
+     * @warning 必须配对调用 return_frame 归还帧缓冲，否则 V4L2 队列耗尽。
      */
-    dal_err_t (*start_stream)(void *ctx, dal_camera_frame_cb_t cb, void *user_data);
+    dal_err_t (*capture_frame)(void *ctx, int timeout_ms, dal_camera_frame_t *frame);
 
     /**
-     * @brief 停止帧流推送
-     * @return DAL_OK 成功
-     */
-    dal_err_t (*stop_stream)(void *ctx);
-
-    /**
-     * @brief 归还帧缓冲（回调处理完后调用）
+     * @brief 归还帧缓冲（capture_frame 处理完后调用）
      * @param[in] ctx   驱动上下文
      * @param[in] frame 帧描述（frame_handle 用于 BSP 内部归还）
      * @return DAL_OK 成功
@@ -102,6 +90,8 @@ typedef struct {
      * @brief 反初始化
      */
     dal_err_t (*deinit)(void *ctx);
+
+    void *ctx;              /**< BSP 私有上下文，由 create() 注入 */
 } dal_camera_ops_t;
 
 #ifdef __cplusplus

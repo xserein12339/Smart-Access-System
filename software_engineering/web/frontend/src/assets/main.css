@@ -1,0 +1,17 @@
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f5f7fa;
+}
+/* 手机端关闭表格横向滚动条隐藏 */
+.el-table { width: 100%; }
+.page-container { padding: 16px; }
+/* 开门按钮大尺寸 */
+.open-door-btn {
+  width: 200px;
+  height: 200px;
+  font-size: 24px;
+  border-radius: 50%;
+}

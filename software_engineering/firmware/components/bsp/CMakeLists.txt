@@ -22,9 +22,14 @@ idf_component_register(
         "bsp_network_ip101/include"
         "bsp_pir_hcsr501/include"
         "board_v1/include"
-        "bsp_config/include"
         "bsp_display_rpi7pin"          # 子芯片内部头文件目录
         "bsp_audio_es8311"             # codec 内部头文件目录
+        "${IDF_PATH}/components/esp_lcd/dsi"  # mipi_dsi_priv.h（DSI HAL 私有结构，tc358762 内联 esp_lcd 用）
     REQUIRES
-        pal osal dal
-        esp_eth esp_netif)             # network BSP 直接用 esp_eth
+        dal
+        freertos esp_timer
+        esp_driver_gpio esp_driver_i2c esp_driver_i2s
+        esp_driver_cam esp_lcd
+        esp_driver_sdmmc sdmmc fatfs vfs
+        esp_eth esp_netif
+)                            # board_selftest 用 f_getfree 查询 SD 容量（依赖 fatfs）

@@ -1,0 +1,10 @@
+## IDF Component Manager Manifest File
+## BSP 摄像头模块（bsp_camera_ov5647 内联 V4L2）依赖 esp_video 托管组件
+## （V4L2 框架：esp_video_init / esp_video_device / esp_video_isp_ioctl 头文件）
+dependencies:
+  idf:
+    version: ">=5.4"
+  espressif/esp_video:
+    version: "^2.1.0"
+    rules:
+      - if: "target == esp32p4"

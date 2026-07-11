@@ -1,42 +1,44 @@
 /**
  * @file    bsp_pir_hcsr501.h
- * @brief   HC-SR501 人体红外感应 BSP - 公共接口
+ * @brief   HC-SR501 人体红外感应 BSP — create + ctx 绑定入口
  *
- * @note    此文件仅声明本板 PIR 子系统的初始化入口。
+ * @details 仅负责创建 ops + ctx 绑定并返回 ops 指针，不调用 DAL 注册 API，
+ *          不驱动硬件。注册由板级组装器（board_v1_init）通过
+ *          dal_pir_register(name, ops, ops->ctx) 完成；硬件初始化由上层通过
+ *          ops->init(ops->ctx) 按需触发。PIR 引脚号仅在本 BSP .c 内可见，
+ *          Service 层完全盲化。
+ *
+ * @note    此文件只声明 create 入口：
  *          - 不包含 GPIO 引脚定义
  *          - 不包含 dal_pir_ops_t 或硬件上下文结构体
  *          - Service 层不应包含此文件
  *
  * @author  xLumina
- * @version 1.0
+ * @version 1.2
  */
 #ifndef BSP_PIR_HCSR501_H
 #define BSP_PIR_HCSR501_H
 
 #include "dal_err.h"
+#include "dal_pir_interface.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief 初始化 HC-SR501 PIR 并自注册到 DAL
+ * @brief 创建 HC-SR501 PIR 的 ops + ctx 绑定
  *
- * @details 完成：
- *          1. 配置 PIR GPIO 为输入（带下拉），安装 GPIO ISR 服务
- *          2. 注册 ANYEDGE 中断，创建内部任务（ISR 投信号量 → 任务调回调）
- *          3. 以名称 "main_pir" 自注册到 DAL pir 模块
+ * @return 指向静态 ops（ops->ctx 已注入静态 ctx）
  *
- * @return DAL_OK 成功
- * @retval DAL_ERR_HW     底层硬件错误
- * @retval DAL_ERR_STATE  DAL 注册冲突
- * @retval DAL_ERR_NO_MEM 资源不足
- *
- * @note PIR 引脚取自 bsp_config.h 的 BOARD_PIR_INTR_PIN。
- *       ⚠️ 若该引脚与其它设备冲突需调整 bsp_config。
- *       init 时不自动 enable，Service 需调 enable() 开始检测。
+ * @note 仅做 struct 绑定（静态 ops 编译期已注入 ctx），零硬件副作用。
+ *       硬件初始化（GPIO 输入+下拉）由上层调 ops->init(ops->ctx) 触发。
+ *       轮询式：上层周期调 ops->get_state(ops->ctx, &state) 读运动状态，
+ *       去抖/状态变化通知由上层处理。BSP 不创建任务、不注册中断。
+ *       注册由板级组装器调用 dal_pir_register(name, ops, ops->ctx) 完成。
+ *       PIR 引脚取自 board_v1_config.h 的 BOARD_PIR_INTR_PIN，仅在 .c 内可见。
  */
-dal_err_t bsp_pir_hcsr501_init(void);
+dal_pir_ops_t *bsp_pir_hcsr501_create(void);
 
 #ifdef __cplusplus
 }

@@ -3,43 +3,50 @@
  * @brief   ES8311 音频 CODEC 子驱动实现
  *
  * @details 移植参考工程的 ES8311 寄存器初始化序列，适配当前工程的
- *          BSP 私有 + dal_err_t + 共享总线模型。PAL I2C 返回码经
- *          dal_err_from_pal 翻译为 dal_err_t。
+ *          BSP 私有 + dal_err_t + 共享总线模型。直接调用 ESP-IDF
+ *          driver/i2c_master，esp_err_t 经 dal_err_from_esp 翻译为
+ *          dal_err_t，不透传到上层。
  *
  * @author  xLumina
- * @version 1.0
+ * @version 1.1
  */
 #include "bsp_audio_es8311_codec.h"
-#include "dal_pal_err.h"
-#include "bsp_config.h"
-#include "pal_log.h"
-#include "osal_task.h"
+#include "dal_esp_err.h"
+#include "board_v1_config.h"
+#include "esp_log.h"
+#include "esp_err.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-/* ---- 内部：寄存器写（reg + val 两字节 I2C 写）---- */
+/* ---- 内部：寄存器写（reg + val 两字节 I2C transmit）---- */
 static dal_err_t es8311_write_reg(bsp_es8311_ctx_t *ctx, uint8_t reg, uint8_t val)
 {
     if (ctx == NULL || ctx->dev == NULL) {
         return DAL_ERR_INVALID;
     }
     uint8_t buf[2] = { reg, val };
-    return dal_err_from_pal(pal_i2c_write(ctx->dev, buf, sizeof(buf)));
+    return dal_err_from_esp(i2c_master_transmit(ctx->dev, buf, sizeof(buf), -1));
 }
 
-dal_err_t bsp_es8311_init(bsp_es8311_ctx_t *ctx, pal_i2c_bus_handle_t bus)
+dal_err_t bsp_es8311_init(bsp_es8311_ctx_t *ctx, i2c_master_bus_handle_t bus)
 {
     if (ctx == NULL || bus == NULL) {
         return DAL_ERR_INVALID;
     }
 
     /* 在共享总线上挂载 ES8311 设备 */
-    pal_i2c_dev_config_t dev_cfg = {
-        .device_address    = BOARD_AUDIO_CODEC_I2C_ADDR,
-        .scl_speed_hz      = BOARD_I2C_FREQ_HZ,
-        .disable_ack_check = false,
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = BOARD_AUDIO_CODEC_I2C_ADDR,
+        .scl_speed_hz    = BOARD_I2C_FREQ_HZ,
+        .scl_wait_us     = 0,   /* 使用驱动默认值 */
+        .flags = {
+            .disable_ack_check = false,
+        },
     };
-    int ret = pal_i2c_dev_attach(&ctx->dev, bus, &dev_cfg);
-    if (ret != 0) {
-        return dal_err_from_pal(ret);
+    esp_err_t e = i2c_master_bus_add_device(bus, &dev_cfg, &ctx->dev);
+    if (e != ESP_OK) {
+        return dal_err_from_esp(e);
     }
 
     /* 1. 复位并进入 I2S slave 模式 */
@@ -89,15 +96,15 @@ dal_err_t bsp_es8311_init(bsp_es8311_ctx_t *ctx, pal_i2c_bus_handle_t bus)
     r |= es8311_write_reg(ctx, ES8311_REG_VOLUME,   ES8311_VOLUME_MAX);
 
     if (r != DAL_OK) {
-        PAL_LOGE("ES8311", "init reg sequence failed");
-        pal_i2c_dev_detach(ctx->dev);
+        ESP_LOGE("ES8311", "init reg sequence failed");
+        i2c_master_bus_rm_device(ctx->dev);
         ctx->dev = NULL;
         return r;
     }
 
-    osal_task_delay_ms(10);
+    vTaskDelay(pdMS_TO_TICKS(10));
     ctx->inited = true;
-    PAL_LOGI("ES8311", "codec initialized");
+    ESP_LOGI("ES8311", "codec initialized");
     return DAL_OK;
 }
 
@@ -110,7 +117,7 @@ dal_err_t bsp_es8311_deinit(bsp_es8311_ctx_t *ctx)
         if (ctx->inited) {
             es8311_write_reg(ctx, ES8311_REG_RESET, 0x00);
         }
-        pal_i2c_dev_detach(ctx->dev);
+        i2c_master_bus_rm_device(ctx->dev);
         ctx->dev = NULL;
     }
     ctx->inited = false;

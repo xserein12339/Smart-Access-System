@@ -7,18 +7,23 @@
  *            - TC358762 桥 / LCD / 触控 复位（PORTC）
  *            - 背光 PWM（0~255）
  *          上电序列：PORTB 开主电源 → PORTC 释放复位 → 设背光。
- *          仅 bsp_display_rpi7pin.c 组装器可包含本文件。
+ *          仅 bsp_display_rpi7pin.c 聚合层可包含本文件。
+ *
+ *          直接使用 ESP-IDF driver/i2c_master.h 原生 API（i2c_master_bus_add_device
+ *          / i2c_master_transmit / i2c_master_transmit_receive），不再经 pal_i2c 封装。
+ *          共享 I2C 总线由 board_v1 提供（board_i2c_get_bus 返回原生
+ *          i2c_master_bus_handle_t）。
  *
  *          寄存器参考：树莓派 7" DSI 屏 ATTINY88 固件 v2 (ID=0xC3)
  *
  * @author  xLumina
- * @version 1.0
+ * @version 2.0
  */
 #ifndef BSP_DISPLAY_ATTINY88_H
 #define BSP_DISPLAY_ATTINY88_H
 
 #include "dal_err.h"
-#include "pal_i2c.h"
+#include "driver/i2c_master.h"      /* i2c_master_bus_handle_t / i2c_master_dev_handle_t */
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -48,22 +53,29 @@ extern "C" {
 
 /** ATTINY88 驱动上下文（BSP 私有） */
 typedef struct {
-    pal_i2c_dev_handle_t dev;   /**< PAL I2C 设备句柄 */
-    uint8_t              i2c_addr;
-    bool                 inited;
+    i2c_master_dev_handle_t dev;       /**< 原生 I2C 设备句柄 */
+    uint8_t                 i2c_addr;  /**< 设备 7 位地址 */
+    bool                    inited;    /**< 是否已初始化 */
 } bsp_attiny88_ctx_t;
 
 /**
  * @brief 初始化 ATTINY88（在共享 I2C 总线上挂载设备，读 ID 校验）
- * @param[out] ctx 上下文
- * @param[in]  bus 共享 I2C 总线句柄（由 board_v1 提供）
- * @return DAL_OK 成功
- * @note I2C 地址取自 bsp_config.h 的 BOARD_DISPLAY_ATTINY88_I2C_ADDR。
- *       初始状态：全部复位保持、背光关闭。
+ *
+ * @param[in,out] ctx 上下文（由调用方分配）
+ * @param[in]     bus 共享 I2C 总线句柄（board_i2c_get_bus 返回的原生句柄）
+ * @return DAL_OK 成功，DAL_ERR_HW I2C 错误，DAL_ERR_INVALID 参数非法
+ *
+ * @note I2C 地址取自 board_v1_config.h 的 BOARD_DISPLAY_ATTINY88_I2C_ADDR。
+ *       初始状态：全部复位保持、背光关闭。读 ID 失败仅告警，不阻断
+ *       （某些板可能未烧 v2 固件）。
  */
-dal_err_t bsp_attiny88_init(bsp_attiny88_ctx_t *ctx, pal_i2c_bus_handle_t bus);
+dal_err_t bsp_attiny88_init(bsp_attiny88_ctx_t *ctx, i2c_master_bus_handle_t bus);
 
-/** @brief 反初始化（关电源、释放 I2C 设备） */
+/**
+ * @brief 反初始化（关电源/背光 + 移除 I2C 设备）
+ * @param[in] ctx 上下文
+ * @return DAL_OK 成功
+ */
 dal_err_t bsp_attiny88_deinit(bsp_attiny88_ctx_t *ctx);
 
 /**
@@ -71,20 +83,26 @@ dal_err_t bsp_attiny88_deinit(bsp_attiny88_ctx_t *ctx);
  *
  * @details 上电序列第一步：开主电源、配置扫描、使能背光 LED，
  *          但桥/LCD/触控仍保持复位，等待 DSI 就绪后再释放。
- *          延时由调用方在释放复位前安排。
+ *          内部 vTaskDelay 等待电源稳定。
  *
+ * @param[in] ctx 上下文
  * @return DAL_OK 成功
  */
 dal_err_t bsp_attiny88_power_on(bsp_attiny88_ctx_t *ctx);
 
 /**
  * @brief 释放桥/LCD/触控复位（在 DSI 总线就绪后调用）
+ *
+ * @details 内部 vTaskDelay 等待桥就绪。
+ *
+ * @param[in] ctx 上下文
  * @return DAL_OK 成功
  */
 dal_err_t bsp_attiny88_release_reset(bsp_attiny88_ctx_t *ctx);
 
 /**
  * @brief 设置背光亮度
+ * @param[in] ctx     上下文
  * @param[in] percent 背光百分比 0~100（内部映射到 0~255）
  * @return DAL_OK 成功
  */

@@ -1,0 +1,58 @@
+# ============================================================================
+#  Face Access System V1.0 — OTA 分区表 (16MB Flash)
+# ============================================================================
+#
+#  硬件: ESP32-P4, 16MB Flash (DIO / 40MHz)
+#  当前固件: ~3.0MB, OTA 槽 4MB (余量 1MB)
+#  AI 模型: esp-dl FlatBuffers, 通过 esp_partition_mmap 零拷贝加载
+#
+#  布局:
+#    0x000000 ┌──────────────────┐
+#             │ Bootloader       │  0x1000~0x8000 (28KB)
+#    0x008000 ├──────────────────┤
+#             │ Partition Table  │  0x8000~0x9000 (4KB)
+#    0x009000 ├──────────────────┤
+#             │ NVS              │  24KB — WiFi/MQTT/设备ID
+#    0x00F000 ├──────────────────┤
+#             │ PHY Init         │  4KB  — RF 校准数据
+#    0x010000 ├──────────────────┤
+#             │ OTA Data         │  8KB  — 活跃槽位/启动计数
+#    0x012000 ├ ─ ─ ─ ─ ─ ─ ─ ─ ┤  56KB — 64KB 对齐空隙
+#    0x020000 ├──────────────────┤
+#             │ ota_0 (固件 A)   │  4MB   — 运行中固件 (3.0MB/4MB, 25%余量)
+#    0x420000 ├──────────────────┤
+#             │ ota_1 (固件 B)   │  4MB   — 新固件下载目标
+#    0x820000 ├──────────────────┤
+#             │ human_face_det   │  2MB   — 人脸检测模型 (esp-dl)
+#             │  ├─ msr_s8_v1    │          MSR 粗检测 (FlatBuffers)
+#             │  └─ mnp_s8_v1    │          MNP 精检测 (FlatBuffers)
+#    0xA20000 ├──────────────────┤
+#             │ human_face_feat  │  2MB   — 特征提取模型 (esp-dl 分区加载)
+#             │  └─ mfn_s8_v1    │          MobileFaceNet S8 (1.43MB/2MB)
+#    0xC20000 ├──────────────────┤
+#             │ user_nvs         │  384KB — 用户配置(OTA 后保留)
+#    0xC80000 ├──────────────────┤
+#             │ (空闲)           │  3.5MB — 预留
+#    0x1000000└──────────────────┘
+#
+#  模型加载:
+#    esp_partition_find_first(DATA, ANY, "human_face_det")
+#    → esp_partition_mmap() → 零拷贝映射到 PSRAM
+#    → dl::Model(path, "model.espdl", MODEL_LOCATION_IN_FLASH_PARTITION)
+#    → fbs_loader 解析 FlatBuffers → 创建推理图 → 权重加载
+#
+#  模型更新 (独立于固件 OTA):
+#    1. MQTT topic: face/{device_id}/model/update
+#    2. 下载 .espdl → esp_partition_erase_range → esp_partition_write
+#    3. face_engine 热重载模型
+# ============================================================================
+
+# Name,           Type, SubType, Offset,     Size
+nvs,              data, nvs,     0x9000,    0x6000
+phy_init,         data, phy,     0xf000,    0x1000
+otadata,          data, ota,     0x10000,   0x2000
+ota_0,            app,  ota_0,   0x20000,   0x400000
+ota_1,            app,  ota_1,   0x420000,  0x400000
+human_face_det,   data, 0x40,    0x820000,  0x200000
+human_face_feat,  data, 0x40,    0xA20000,  0x200000
+user_nvs,         data, nvs,     0xC20000,  0x60000

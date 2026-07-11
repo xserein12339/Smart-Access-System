@@ -9,7 +9,8 @@
  * @version 1.0
  */
 #include "dal_relay.h"
-#include "osal_mutex.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <string.h>
 #include <stddef.h>
 
@@ -17,7 +18,7 @@
 #define DAL_RELAY_MAX_INSTANCES  8   /**< 可由编译选项覆盖 */
 #endif
 
-/** 注册表互斥锁等待超时（ms）；OSAL lock 经 pdMS_TO_TICKS 转换，
+/** 注册表互斥锁等待超时（ms）；pdMS_TO_TICKS 转换，
  *  传 portMAX_DELAY 会溢出，故用有限超时，拿不到锁返回 DAL_ERR_BUSY */
 #define DAL_RELAY_LOCK_TIMEOUT_MS  1000u
 
@@ -30,12 +31,12 @@ typedef struct {
 /* 静态实例表，避免动态内存分配 */
 static dal_relay_entry_t s_entries[DAL_RELAY_MAX_INSTANCES];
 static uint8_t           s_count  = 0;
-static osal_mutex_t      s_mutex  = NULL;
+static SemaphoreHandle_t s_mutex  = NULL;
 
 /**
  * @brief 懒创建注册表互斥锁
  *
- * @note 依赖 ESP-IDF 启动模型：app_main 单线程顺序调用各 bsp_xxx_init，
+ * @note 依赖 ESP-IDF 启动模型：app_main 单线程顺序调用各 bsp_xxx_create/register，
  *       首次 register 不会并发，故此处懒创建无需额外同步。
  *       后续 get 可能在多任务并发，此时 s_mutex 已就绪。
  *
@@ -44,7 +45,7 @@ static osal_mutex_t      s_mutex  = NULL;
 static dal_err_t relay_ensure_mutex(void)
 {
     if (s_mutex == NULL) {
-        s_mutex = osal_mutex_create();
+        s_mutex = xSemaphoreCreateMutex();
         if (s_mutex == NULL) {
             return DAL_ERR_NO_MEM;
         }
@@ -65,19 +66,19 @@ dal_err_t dal_relay_register(const char *name,
         return ret;
     }
 
-    if (!osal_mutex_lock(s_mutex, DAL_RELAY_LOCK_TIMEOUT_MS)) {
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(DAL_RELAY_LOCK_TIMEOUT_MS)) != pdTRUE) {
         return DAL_ERR_BUSY;
     }
 
     if (s_count >= DAL_RELAY_MAX_INSTANCES) {
-        osal_mutex_unlock(s_mutex);
+        xSemaphoreGive(s_mutex);
         return DAL_ERR_NO_MEM;
     }
 
     /* 防止重复注册 */
     for (uint8_t i = 0; i < s_count; i++) {
         if (strcmp(s_entries[i].name, name) == 0) {
-            osal_mutex_unlock(s_mutex);
+            xSemaphoreGive(s_mutex);
             return DAL_ERR_STATE;
         }
     }
@@ -87,7 +88,7 @@ dal_err_t dal_relay_register(const char *name,
     s_entries[s_count].ctx  = ctx;
     s_count++;
 
-    osal_mutex_unlock(s_mutex);
+    xSemaphoreGive(s_mutex);
     return DAL_OK;
 }
 
@@ -107,7 +108,7 @@ dal_err_t dal_relay_get(const char *name,
         return DAL_ERR_NOT_FOUND;
     }
 
-    if (!osal_mutex_lock(s_mutex, DAL_RELAY_LOCK_TIMEOUT_MS)) {
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(DAL_RELAY_LOCK_TIMEOUT_MS)) != pdTRUE) {
         return DAL_ERR_BUSY;
     }
 
@@ -115,11 +116,11 @@ dal_err_t dal_relay_get(const char *name,
         if (strcmp(s_entries[i].name, name) == 0) {
             *ops = s_entries[i].ops;
             *ctx = s_entries[i].ctx;
-            osal_mutex_unlock(s_mutex);
+            xSemaphoreGive(s_mutex);
             return DAL_OK;
         }
     }
 
-    osal_mutex_unlock(s_mutex);
+    xSemaphoreGive(s_mutex);
     return DAL_ERR_NOT_FOUND;
 }

@@ -1,23 +1,24 @@
 /**
  * @file    bsp_network_ip101.c
- * @brief   IP101 PHY 以太网 BSP 实现 — esp_eth + esp_netif，自注册到 DAL
+ * @brief   IP101 PHY 以太网 BSP 实现 — esp_eth + esp_netif，create + ctx 绑定
  *
  * @details 移植参考工程的 esp_eth 初始化序列，适配当前工程的 BSP 私有 +
- *          dal_err_t + 状态回调模型。无 PAL 网络封装层，BSP 直接用 esp_eth。
- *          esp_err_t 经 dal_err_from_pal 翻译为 dal_err_t。
+ *          dal_err_t + 状态回调模型。直接用 ESP-IDF esp_eth/esp_netif/esp_event，
+ *          esp_err_t 经 dal_err_from_esp() 翻译为 dal_err_t，不透传到上层。
+ *
+ *          bsp_network_ip101_create() 仅返回静态 ops 指针（ctx 编译期注入
+ *          ops->ctx），不注册 DAL、不驱动硬件；硬件初始化封装在 ops->init()，
+ *          由上层按需触发。
  *
  *          状态回调：IP_EVENT_ETH_GOT_IP 时通知 CONNECTED，
  *          ETHERNET_EVENT_DISCONNECTED 时通知 DISCONNECTED。
  *
  * @author  xLumina
- * @version 1.0
+ * @version 1.2
  */
 #include "bsp_network_ip101.h"
-#include "dal_network.h"
-#include "dal_network_interface.h"
-#include "dal_pal_err.h"
-#include "bsp_config.h"
-#include "pal_log.h"
+#include "dal_esp_err.h"
+#include "board_v1_config.h"
 
 #include "esp_eth.h"
 #include "esp_eth_mac.h"
@@ -25,9 +26,12 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_err.h"
+#include "esp_log.h"
 
 #include <string.h>
 #include <stdio.h>
+
+static const char *NET_TAG = "NET";
 
 /* ---- BSP 私有上下文 ---- */
 typedef struct {
@@ -59,10 +63,10 @@ static void eth_event_handler(void *arg, esp_event_base_t base,
 
     switch (id) {
     case ETHERNET_EVENT_CONNECTED:
-        PAL_LOGI("NET", "link up");
+        ESP_LOGI(NET_TAG, "link up");
         break;
     case ETHERNET_EVENT_DISCONNECTED:
-        PAL_LOGI("NET", "link down");
+        ESP_LOGI(NET_TAG, "link down");
         if (c->connected) {
             c->connected = false;
             if (c->on_state) {
@@ -71,10 +75,10 @@ static void eth_event_handler(void *arg, esp_event_base_t base,
         }
         break;
     case ETHERNET_EVENT_START:
-        PAL_LOGI("NET", "started");
+        ESP_LOGI(NET_TAG, "started");
         break;
     case ETHERNET_EVENT_STOP:
-        PAL_LOGI("NET", "stopped");
+        ESP_LOGI(NET_TAG, "stopped");
         break;
     default:
         break;
@@ -90,7 +94,7 @@ static void ip_event_handler(void *arg, esp_event_base_t base,
 
     if (id == IP_EVENT_ETH_GOT_IP) {
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)data;
-        PAL_LOGI("NET", "got IP: " IPSTR, IP2STR(&ev->ip_info.ip));
+        ESP_LOGI(NET_TAG, "got IP: " IPSTR, IP2STR(&ev->ip_info.ip));
         if (!c->connected) {
             c->connected = true;
             if (c->on_state) {
@@ -155,11 +159,11 @@ static dal_err_t net_init(void *ctx_, const dal_network_config_t *cfg,
     /* 1. TCP/IP 栈 + 默认事件循环 */
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK) {
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
     ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
 
     /* 2. Ethernet netif */
@@ -195,7 +199,7 @@ static dal_err_t net_init(void *ctx_, const dal_network_config_t *cfg,
     ret = esp_eth_driver_install(&eth_config, &c->eth_handle);
     if (ret != ESP_OK) {
         net_cleanup(c);
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
 
     /* 6. 绑定 netif */
@@ -207,7 +211,7 @@ static dal_err_t net_init(void *ctx_, const dal_network_config_t *cfg,
     ret = esp_netif_attach(c->netif, c->glue);
     if (ret != ESP_OK) {
         net_cleanup(c);
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
 
     /* 7. 注册事件 */
@@ -215,14 +219,14 @@ static dal_err_t net_init(void *ctx_, const dal_network_config_t *cfg,
                                      eth_event_handler, c);
     if (ret != ESP_OK) {
         net_cleanup(c);
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
     c->eth_event_registered = true;
     ret = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
                                      ip_event_handler, c);
     if (ret != ESP_OK) {
         net_cleanup(c);
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
     c->ip_event_registered = true;
 
@@ -235,12 +239,12 @@ static dal_err_t net_init(void *ctx_, const dal_network_config_t *cfg,
         ret = esp_netif_dhcpc_stop(c->netif);
         if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
             net_cleanup(c);
-            return dal_err_from_pal(ret);
+            return dal_err_from_esp(ret);
         }
         ret = esp_netif_set_ip_info(c->netif, &ip_info);
         if (ret != ESP_OK) {
             net_cleanup(c);
-            return dal_err_from_pal(ret);
+            return dal_err_from_esp(ret);
         }
     }
 
@@ -248,12 +252,12 @@ static dal_err_t net_init(void *ctx_, const dal_network_config_t *cfg,
     ret = esp_eth_start(c->eth_handle);
     if (ret != ESP_OK) {
         net_cleanup(c);
-        return dal_err_from_pal(ret);
+        return dal_err_from_esp(ret);
     }
     c->started = true;
     c->inited  = true;
 
-    PAL_LOGI("NET", "ethernet started (MDC=%d MDIO=%d PHY_ADDR=%d)",
+    ESP_LOGI(NET_TAG, "ethernet started (MDC=%d MDIO=%d PHY_ADDR=%d)",
              BOARD_NETWORK_ETH_MDC_PIN, BOARD_NETWORK_ETH_MDIO_PIN,
              BOARD_NETWORK_ETH_PHY_ADDR);
     return DAL_OK;
@@ -294,32 +298,25 @@ static dal_err_t net_deinit(void *ctx_)
     return DAL_OK;
 }
 
-static const dal_network_ops_t s_net_ops = {
+/* ================================================================
+ *  静态 ops + ctx（单实例，ctx 编译期注入 ops->ctx）
+ * ================================================================ */
+static dal_network_ops_t s_net_ops = {
     .init         = net_init,
     .get_ip       = net_get_ip,
     .is_connected = net_is_connected,
     .deinit       = net_deinit,
+    .ctx          = &s_ctx,
 };
 
 /* ================================================================
- *  对外初始化入口（自注册）
+ *  对外 create 入口（仅返回 ops 指针，不注册、不初始化硬件）
  * ================================================================ */
-dal_err_t bsp_network_ip101_init(void)
+dal_network_ops_t *bsp_network_ip101_create(void)
 {
-    /* 用板级默认 IP 配置预初始化（DHCP） */
-    dal_network_config_t cfg = {
-        .use_dhcp = BOARD_NETWORK_USE_DHCP,
-    };
-    /* 静态 IP 字段从宏拷贝（DHCP 模式下不使用） */
-    snprintf(cfg.static_ip, sizeof(cfg.static_ip), "%s", BOARD_NETWORK_STATIC_IP);
-    snprintf(cfg.netmask,   sizeof(cfg.netmask),   "%s", BOARD_NETWORK_NETMASK);
-    snprintf(cfg.gateway,   sizeof(cfg.gateway),   "%s", BOARD_NETWORK_GATEWAY);
-
-    dal_err_t ret = net_init(&s_ctx, &cfg, NULL, NULL);
-    if (ret != DAL_OK) {
-        return ret;
-    }
-
-    /* 自注册到 DAL */
-    return dal_network_register("main_eth", &s_net_ops, &s_ctx);
+    /* 静态 ops 编译期已注入 ctx；此处仅做非硬件的 ctx 字段清零。
+     * 单实例：上层调 ops->init(ops->ctx, cfg, cb, user_data) 触发以太网硬件
+     * 初始化；默认 IP 配置（DHCP/静态）由上层从 board_v1_config 宏构造后传入。 */
+    memset(&s_ctx, 0, sizeof(s_ctx));
+    return &s_net_ops;
 }

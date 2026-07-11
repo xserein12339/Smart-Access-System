@@ -1,12 +1,25 @@
 idf_component_register(
     SRCS
-        "event_bus/mw_event_bus.c"
         "buffer_pool/buffer_pool_manager.c"
+        "event_bus/mw_event_bus.c"
+        "face_engine/face_engine.c"
+        "face_engine/esp_dl_adapter.cpp"
+        "db_store/db_store.c"
+        "log_sink/log_sink.c"
+        "msg_queues/msg_queues.c"
     INCLUDE_DIRS
-        "event_bus/include"
         "buffer_pool/include"
+        "event_bus/include"
+        "face_engine/include"
+        "db_store/include"
+        "log_sink/include"
+        "msg_queues/include"   
     REQUIRES
-        osal
-        pal
+        freertos
         dal
-    )
+        fatfs
+        esp_event
+        esp-dl
+        human_face_detect
+        face_feature_model
+)

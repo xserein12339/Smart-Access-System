@@ -6,16 +6,19 @@
  *          本驱动封装寄存器初始化序列、音量、静音控制。
  *          仅 bsp_audio_es8311.c 可包含本文件。
  *
+ *          直接调用 ESP-IDF driver/i2c_master，bus 参数为
+ *          i2c_master_bus_handle_t（由 board_i2c_get_bus() 转型得到）。
+ *
  *          参考：ES8311 Datasheet
  *
  * @author  xLumina
- * @version 1.0
+ * @version 1.1
  */
 #ifndef BSP_AUDIO_ES8311_CODEC_H
 #define BSP_AUDIO_ES8311_CODEC_H
 
 #include "dal_err.h"
-#include "pal_i2c.h"
+#include "driver/i2c_master.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -63,18 +66,18 @@ extern "C" {
 
 /** ES8311 驱动上下文（BSP 私有） */
 typedef struct {
-    pal_i2c_dev_handle_t dev;   /**< PAL I2C 设备句柄 */
-    bool                 inited;
+    i2c_master_dev_handle_t dev;   /**< I2C 设备句柄（共享总线挂载） */
+    bool                    inited;
 } bsp_es8311_ctx_t;
 
 /**
  * @brief 初始化 ES8311（复位 + I2S slave 模式 + 16-bit Philips + 启用 DAC）
  * @param[out] ctx 上下文
- * @param[in]  bus 共享 I2C 总线句柄
+ * @param[in]  bus 共享 I2C 总线句柄（i2c_master_bus_handle_t）
  * @return DAL_OK 成功
- * @note I2C 地址取自 bsp_config.h 的 BOARD_AUDIO_CODEC_I2C_ADDR。
+ * @note I2C 地址取自 board_v1_config.h 的 BOARD_AUDIO_CODEC_I2C_ADDR。
  */
-dal_err_t bsp_es8311_init(bsp_es8311_ctx_t *ctx, pal_i2c_bus_handle_t bus);
+dal_err_t bsp_es8311_init(bsp_es8311_ctx_t *ctx, i2c_master_bus_handle_t bus);
 
 /** @brief 反初始化 */
 dal_err_t bsp_es8311_deinit(bsp_es8311_ctx_t *ctx);

@@ -33,6 +33,15 @@ extern "C" {
  */
 typedef struct dal_relay_ops {
     /**
+     * @brief 初始化继电器硬件（配置 GPIO 输出 + 置安全默认态）
+     * @param[in] ctx 驱动上下文（BSP 私有）
+     * @return DAL_OK 成功，DAL_ERR_HW 底层硬件错误
+     *
+     * @note 由上层（Assembler/Service）按需触发，create() 不驱动硬件。
+     */
+    dal_err_t (*init)(void *ctx);
+
+    /**
      * @brief 设置继电器开关状态
      * @param[in] ctx  驱动上下文（BSP 私有）
      * @param[in] on   true=吸合, false=断开
@@ -47,6 +56,11 @@ typedef struct dal_relay_ops {
      * @return DAL_OK 成功，DAL_ERR_INVALID 参数非法，DAL_ERR_HW 底层错误
      */
     dal_err_t (*get)(void *ctx, bool *out);
+
+    /** @brief 反初始化 */
+    dal_err_t (*deinit)(void *ctx);
+
+    void *ctx;              /**< BSP 私有上下文，由 create() 注入 */
 } dal_relay_ops_t;
 
 /**

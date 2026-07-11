@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Access System — 设备演示</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; color: #fff; font-family: -apple-system, sans-serif;
+       display: flex; flex-direction: column; align-items: center;
+       justify-content: center; min-height: 100vh; }
+h1 { font-weight: 300; margin-bottom: 20px; color: #81C784; }
+video { max-width: 100%; max-height: 70vh; border-radius: 8px;
+        box-shadow: 0 0 30px rgba(129,199,132,0.3); }
+p { margin-top: 16px; color: #888; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Face Access System</h1>
+<video src="demo.mp4" controls autoplay loop></video>
+<p>基于 ESP32-P4 的边缘 AI 人脸识别门禁</p>
+</body>
+</html>

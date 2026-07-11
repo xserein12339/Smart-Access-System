@@ -2,7 +2,7 @@
 
 基于 ESP32-P4 的边缘 AI 人脸识别门禁方案。支持本地人脸检测/特征提取/1:N 识别、PIR 人体感应自动唤醒、7 寸触摸屏交互、MQTT 远程管理、OTA 固件升级。
 
-<video src="Doucments/演示.mp4" controls width="100%"></video>
+▶️ [观看设备演示视频](http://47.109.76.87/)
 
 ---
 

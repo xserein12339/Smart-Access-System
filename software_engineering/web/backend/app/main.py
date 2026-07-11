@@ -6,6 +6,8 @@ import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 
 from .config import settings
 from .db import init_db
@@ -44,6 +46,22 @@ app.include_router(records.router)
 app.include_router(logs.router)
 app.include_router(firmware.router)
 app.include_router(ws.router)
+
+# 挂载静态文件目录，提供演示视频
+import os
+_static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.isdir(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+@app.get("/demo", response_class=HTMLResponse)
+async def demo_page():
+    return """
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>演示视频</title>
+<style>body{display:flex;justify-content:center;align-items:center;min-height:100vh;
+margin:0;background:#000}video{max-width:100%;max-height:100vh}</style></head>
+<body><video src="/static/demo.mp4" controls autoplay loop></video></body></html>"""
 
 
 @app.on_event("startup")

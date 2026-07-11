@@ -2,6 +2,8 @@
 
 基于 ESP32-P4 的边缘 AI 人脸识别门禁方案。支持本地人脸检测/特征提取/1:N 识别、PIR 人体感应自动唤醒、7 寸触摸屏交互、MQTT 远程管理、OTA 固件升级。
 
+<video src="Doucments/演示.mp4" controls width="100%"></video>
+
 ---
 
 ## 硬件选型
@@ -14,7 +16,6 @@
 | 触摸 | FT5406 | I²C (0x38) | 电容式, 10 点触控 |
 | 人体感应 | HC-SR501 | GPIO 中断 (双沿) | PIR 红外, 检测距离 3~7m |
 | 继电器 | SRD-05VDC ×3 | GPIO (高电平吸合) | 门锁 / 报警 / 韦根电源 |
-| 音频 | ES8311 + NS4150B | I²S + I²C (0x18) | 16kHz 采样, 立体声 |
 | 以太网 | IP101 | RMII | 100Mbps, 板载 RJ45 (POE) |
 | 存储 | MicroSD | SDMMC 4-bit | FATFS, 人员库 + 通行记录 |
 
@@ -103,6 +104,3 @@ idf.py -p /dev/ttyUSB0 flash
 | [V4L2框架](Doucments/V4L2框架.md) | USB UVC V4L2 驱动机制 |
 | [自定义人脸特征提取模型部署](Doucments/自定义人脸特征提取模型部署.md) | eature_model 模型部署 |
 
-## License
-
-MIT

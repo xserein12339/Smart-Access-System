@@ -91,8 +91,8 @@ static int dl_detect(void *ctx, const face_image_t *img,
     static bool s_first = true;
     if (s_first) {
         s_first = false;
-        s_detect_model->set_score_thr(0.1f, 0);
-        s_detect_model->set_score_thr(0.1f, 1);
+        s_detect_model->set_score_thr(0.2f, 0);
+        s_detect_model->set_score_thr(0.2f, 1);
     }
 
     auto &res = s_detect_model->run(dl_img);
